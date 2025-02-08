@@ -12,7 +12,7 @@ namespace WeedKillerFixes
     [BepInPlugin(PLUGIN_GUID, PLUGIN_NAME, PLUGIN_VERSION)]
     public class Plugin : BaseUnityPlugin
     {
-        const string PLUGIN_GUID = "butterystancakes.lethalcompany.weedkillerfixes", PLUGIN_NAME = "Weed Killer Fixes", PLUGIN_VERSION = "1.1.1";
+        const string PLUGIN_GUID = "butterystancakes.lethalcompany.weedkillerfixes", PLUGIN_NAME = "Weed Killer Fixes", PLUGIN_VERSION = "1.1.2";
         internal static new ManualLogSource Logger;
 
         void Awake()
@@ -107,7 +107,7 @@ namespace WeedKillerFixes
             }
 
             //Plugin.Logger.LogWarning($"{__originalMethod.Name} transpiler failed");
-            return instructions;
+            return codes;
         }
 
         [HarmonyPatch(typeof(VehicleController), "Awake")]
