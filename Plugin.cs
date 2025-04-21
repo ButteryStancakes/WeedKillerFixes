@@ -1,4 +1,5 @@
 ﻿using BepInEx;
+using BepInEx.Bootstrap;
 using BepInEx.Logging;
 using HarmonyLib;
 using System.Collections.Generic;
@@ -10,14 +11,23 @@ using UnityEngine;
 namespace WeedKillerFixes
 {
     [BepInPlugin(PLUGIN_GUID, PLUGIN_NAME, PLUGIN_VERSION)]
+    [BepInDependency(GUID_LOBBY_COMPATIBILITY, BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
-        const string PLUGIN_GUID = "butterystancakes.lethalcompany.weedkillerfixes", PLUGIN_NAME = "Weed Killer Fixes", PLUGIN_VERSION = "1.1.2";
+        internal const string PLUGIN_GUID = "butterystancakes.lethalcompany.weedkillerfixes", PLUGIN_NAME = "Weed Killer Fixes", PLUGIN_VERSION = "1.1.2";
         internal static new ManualLogSource Logger;
+
+        const string GUID_LOBBY_COMPATIBILITY = "BMX.LobbyCompatibility";
 
         void Awake()
         {
             Logger = base.Logger;
+
+            if (Chainloader.PluginInfos.ContainsKey(GUID_LOBBY_COMPATIBILITY))
+            {
+                Logger.LogInfo("CROSS-COMPATIBILITY - Lobby Compatibility detected");
+                LobbyCompatibility.Init();
+            }
 
             new Harmony(PLUGIN_GUID).PatchAll();
 
