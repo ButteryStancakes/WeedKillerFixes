@@ -14,7 +14,7 @@ namespace WeedKillerFixes
     [BepInDependency(GUID_LOBBY_COMPATIBILITY, BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
-        internal const string PLUGIN_GUID = "butterystancakes.lethalcompany.weedkillerfixes", PLUGIN_NAME = "Weed Killer Fixes", PLUGIN_VERSION = "1.1.2";
+        internal const string PLUGIN_GUID = "butterystancakes.lethalcompany.weedkillerfixes", PLUGIN_NAME = "Weed Killer Fixes", PLUGIN_VERSION = "1.2.0";
         internal static new ManualLogSource Logger;
 
         const string GUID_LOBBY_COMPATIBILITY = "BMX.LobbyCompatibility";
@@ -36,7 +36,7 @@ namespace WeedKillerFixes
     }
 
     [HarmonyPatch]
-    class WeedKillerFixesPatches
+    static class WeedKillerFixesPatches
     {
         static MoldSpreadManager moldSpreadManager;
         static MoldSpreadManager MoldSpreadManager
@@ -50,9 +50,11 @@ namespace WeedKillerFixes
             }
         }
         static VehicleController vehicleController;
+        static CadaverGrowthAI cadaverGrowthAI;
 
         static readonly MethodInfo MOLD_SPREAD_MANAGER_INSTANCE = AccessTools.DeclaredPropertyGetter(typeof(WeedKillerFixesPatches), nameof(MoldSpreadManager));
         static readonly FieldInfo VEHICLE_CONTROLLER_INSTANCE = AccessTools.Field(typeof(WeedKillerFixesPatches), nameof(vehicleController));
+        static readonly FieldInfo CADAVER_GROWTH_AI_INSTANCE = AccessTools.Field(typeof(WeedKillerFixesPatches), nameof(cadaverGrowthAI));
 
         [HarmonyPatch(typeof(SprayPaintItem), nameof(SprayPaintItem.TrySprayingWeedKillerBottle))]
         [HarmonyTranspiler]
@@ -60,44 +62,36 @@ namespace WeedKillerFixes
         {
             List<CodeInstruction> codes = instructions.ToList();
 
-            MethodInfo compareTag = AccessTools.Method(typeof(GameObject), nameof(GameObject.CompareTag));
             MethodInfo timeDeltaTime = AccessTools.DeclaredPropertyGetter(typeof(Time), nameof(Time.deltaTime));
             for (int i = 2; i < codes.Count - 3; i++)
             {
                 if (codes[i].opcode == OpCodes.Call)
                 {
-                    string methodName = codes[i].operand.ToString();
-                    if (methodName.Contains("Raycast") && codes[i - 2].opcode == OpCodes.Ldc_I4)
-                    {
-                        codes[i - 2].operand = (int)codes[i - 2].operand & ~(1 << LayerMask.NameToLayer("Room"));
-                        Plugin.Logger.LogDebug("Transpiler (SprayPaintItem.TrySprayingWeedKillerBottle): Simplify layer mask");
-                    }
-                    else if ((MethodInfo)codes[i].operand == timeDeltaTime)
+                    if ((MethodInfo)codes[i].operand == timeDeltaTime)
                     {
                         codes[i].opcode = OpCodes.Ldfld;
                         codes[i].operand = AccessTools.Field(typeof(SprayPaintItem), nameof(SprayPaintItem.sprayIntervalSpeed));
                         codes.Insert(i, new CodeInstruction(OpCodes.Ldarg_0));
                         Plugin.Logger.LogDebug("Transpiler (SprayPaintItem.TrySprayingWeedKillerBottle): Fix addVehicleHPInterval time");
                     }
-                    else if (methodName.Contains("VehicleController"))
+                    else
                     {
-                        codes[i].opcode = OpCodes.Ldsfld;
-                        codes[i].operand = VEHICLE_CONTROLLER_INSTANCE;
-                        Plugin.Logger.LogDebug($"Transpiler (SprayPaintItem.TrySprayingWeedKillerBottle): Cache Cruiser script");
+                        string methodName = codes[i].operand.ToString();
+                        if (methodName.Contains("FindObjectOfType") && methodName.Contains("VehicleController"))
+                        {
+                            codes[i].opcode = OpCodes.Ldsfld;
+                            codes[i].operand = VEHICLE_CONTROLLER_INSTANCE;
+                            Plugin.Logger.LogDebug($"Transpiler (SprayPaintItem.TrySprayingWeedKillerBottle): Cache Cruiser script");
+                        }
                     }
-                }
-                else if (codes[i].opcode == OpCodes.Ldstr && (string)codes[i].operand == "MoldSporeCollider" && codes[i + 1].opcode == OpCodes.Callvirt && (MethodInfo)codes[i + 1].operand == compareTag)
-                {
-                    codes[i].operand = "MoldSpore";
-                    Plugin.Logger.LogDebug("Transpiler (SprayPaintItem.TrySprayingWeedKillerBottle): Fix wrong tag being checked");
                 }
             }
 
             return codes;
         }
 
-        [HarmonyPatch(typeof(SprayPaintItem), nameof(SprayPaintItem.KillWeedClientRpc))]
-        [HarmonyPatch(typeof(SprayPaintItem), nameof(SprayPaintItem.LateUpdate))]
+        [HarmonyPatch(typeof(SprayPaintItem), nameof(SprayPaintItem.Start))]
+        [HarmonyPatch(typeof(SprayPaintItem), nameof(SprayPaintItem.CheckForWeedsInSprayPath))]
         [HarmonyTranspiler]
         static IEnumerable<CodeInstruction> CacheMoldSpreadManager(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod)
         {
@@ -120,12 +114,47 @@ namespace WeedKillerFixes
             return codes;
         }
 
-        [HarmonyPatch(typeof(VehicleController), "Awake")]
+        [HarmonyPatch(typeof(SprayPaintItem), nameof(SprayPaintItem.LateUpdate))]
+        [HarmonyPatch(typeof(SprayPaintItem), nameof(SprayPaintItem.TrySprayingWeedKillerOnLocalPlayer))]
+        [HarmonyPatch(typeof(SprayPaintItem), nameof(SprayPaintItem.CheckForCadaverPlantsInSprayPath))]
+        [HarmonyPatch(typeof(SprayPaintItem), nameof(SprayPaintItem.KillCadaverPlantRpc))]
+        [HarmonyTranspiler]
+        static IEnumerable<CodeInstruction> CacheCadaverGrowthAI(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod)
+        {
+            List<CodeInstruction> codes = instructions.ToList();
+
+            for (int i = 0; i < codes.Count; i++)
+            {
+                if (codes[i].opcode == OpCodes.Call)
+                {
+                    string methodName = codes[i].operand.ToString();
+                    if (methodName.Contains("FindObjectOfType") && methodName.Contains("CadaverGrowthAI"))
+                    {
+                        codes[i].opcode = OpCodes.Ldsfld;
+                        codes[i].operand = CADAVER_GROWTH_AI_INSTANCE;
+                        Plugin.Logger.LogDebug($"Transpiler ({__originalMethod.DeclaringType}.{__originalMethod.Name}): Cache Cadaver script");
+                    }
+                }
+            }
+
+            //Plugin.Logger.LogWarning($"{__originalMethod.Name} transpiler failed");
+            return codes;
+        }
+
+        [HarmonyPatch(typeof(VehicleController), nameof(VehicleController.Awake))]
         [HarmonyPostfix]
         static void VehicleController_Post_Awake(VehicleController __instance)
         {
             if (vehicleController == null)
                 vehicleController = __instance;
+        }
+
+        [HarmonyPatch(typeof(CadaverGrowthAI), nameof(CadaverGrowthAI.Start))]
+        [HarmonyPostfix]
+        static void CadaverGrowthAI_Post_Start(CadaverGrowthAI __instance)
+        {
+            if (cadaverGrowthAI == null)
+                cadaverGrowthAI = __instance;
         }
     }
 }
