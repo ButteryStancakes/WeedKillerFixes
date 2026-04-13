@@ -14,7 +14,7 @@ namespace WeedKillerFixes
     [BepInDependency(GUID_LOBBY_COMPATIBILITY, BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
-        internal const string PLUGIN_GUID = "butterystancakes.lethalcompany.weedkillerfixes", PLUGIN_NAME = "Weed Killer Fixes", PLUGIN_VERSION = "1.2.0";
+        internal const string PLUGIN_GUID = "butterystancakes.lethalcompany.weedkillerfixes", PLUGIN_NAME = "Weed Killer Fixes", PLUGIN_VERSION = "1.2.1";
         internal static new ManualLogSource Logger;
 
         const string GUID_LOBBY_COMPATIBILITY = "BMX.LobbyCompatibility";
@@ -52,6 +52,8 @@ namespace WeedKillerFixes
         static VehicleController vehicleController;
         static CadaverGrowthAI cadaverGrowthAI;
 
+        static readonly MethodInfo FIND_OBJECT_OF_TYPE_MOLD_SPREAD_MANAGER = AccessTools.Method(typeof(Object), nameof(Object.FindObjectOfType), null, [typeof(MoldSpreadManager)]);
+        static readonly MethodInfo FIND_OBJECT_OF_TYPE_CADAVER_GROWTH_AI = AccessTools.Method(typeof(Object), nameof(Object.FindObjectOfType), null, [typeof(CadaverGrowthAI)]);
         static readonly MethodInfo MOLD_SPREAD_MANAGER_INSTANCE = AccessTools.DeclaredPropertyGetter(typeof(WeedKillerFixesPatches), nameof(MoldSpreadManager));
         static readonly FieldInfo VEHICLE_CONTROLLER_INSTANCE = AccessTools.Field(typeof(WeedKillerFixesPatches), nameof(vehicleController));
         static readonly FieldInfo CADAVER_GROWTH_AI_INSTANCE = AccessTools.Field(typeof(WeedKillerFixesPatches), nameof(cadaverGrowthAI));
@@ -63,26 +65,24 @@ namespace WeedKillerFixes
             List<CodeInstruction> codes = instructions.ToList();
 
             MethodInfo timeDeltaTime = AccessTools.DeclaredPropertyGetter(typeof(Time), nameof(Time.deltaTime));
+            MethodInfo findObjectOfTypeVehicleController = AccessTools.Method(typeof(Object), nameof(Object.FindObjectOfType), null, [typeof(VehicleController)]);
             for (int i = 2; i < codes.Count - 3; i++)
             {
                 if (codes[i].opcode == OpCodes.Call)
                 {
-                    if ((MethodInfo)codes[i].operand == timeDeltaTime)
+                    MethodInfo methodInfo = codes[i].operand as MethodInfo;
+                    if (methodInfo == timeDeltaTime)
                     {
                         codes[i].opcode = OpCodes.Ldfld;
                         codes[i].operand = AccessTools.Field(typeof(SprayPaintItem), nameof(SprayPaintItem.sprayIntervalSpeed));
                         codes.Insert(i, new CodeInstruction(OpCodes.Ldarg_0));
                         Plugin.Logger.LogDebug("Transpiler (SprayPaintItem.TrySprayingWeedKillerBottle): Fix addVehicleHPInterval time");
                     }
-                    else
+                    else if (methodInfo == findObjectOfTypeVehicleController)
                     {
-                        string methodName = codes[i].operand.ToString();
-                        if (methodName.Contains("FindObjectOfType") && methodName.Contains("VehicleController"))
-                        {
-                            codes[i].opcode = OpCodes.Ldsfld;
-                            codes[i].operand = VEHICLE_CONTROLLER_INSTANCE;
-                            Plugin.Logger.LogDebug($"Transpiler (SprayPaintItem.TrySprayingWeedKillerBottle): Cache Cruiser script");
-                        }
+                        codes[i].opcode = OpCodes.Ldsfld;
+                        codes[i].operand = VEHICLE_CONTROLLER_INSTANCE;
+                        Plugin.Logger.LogDebug($"Transpiler (SprayPaintItem.TrySprayingWeedKillerBottle): Cache Cruiser script");
                     }
                 }
             }
@@ -101,8 +101,8 @@ namespace WeedKillerFixes
             {
                 if (codes[i].opcode == OpCodes.Call)
                 {
-                    string methodName = codes[i].operand.ToString();
-                    if (methodName.Contains("FindObjectOfType") && methodName.Contains("MoldSpreadManager"))
+                    MethodInfo methodInfo = codes[i].operand as MethodInfo;
+                    if (methodInfo == FIND_OBJECT_OF_TYPE_MOLD_SPREAD_MANAGER)
                     {
                         codes[i].operand = MOLD_SPREAD_MANAGER_INSTANCE;
                         Plugin.Logger.LogDebug($"Transpiler ({__originalMethod.DeclaringType}.{__originalMethod.Name}): Cache weed script");
@@ -127,8 +127,8 @@ namespace WeedKillerFixes
             {
                 if (codes[i].opcode == OpCodes.Call)
                 {
-                    string methodName = codes[i].operand.ToString();
-                    if (methodName.Contains("FindObjectOfType") && methodName.Contains("CadaverGrowthAI"))
+                    MethodInfo methodInfo = codes[i].operand as MethodInfo;
+                    if (methodInfo == FIND_OBJECT_OF_TYPE_CADAVER_GROWTH_AI)
                     {
                         codes[i].opcode = OpCodes.Ldsfld;
                         codes[i].operand = CADAVER_GROWTH_AI_INSTANCE;
